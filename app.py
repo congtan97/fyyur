@@ -15,7 +15,7 @@ from forms import *
 from datetime import datetime
 from flask_migrate import Migrate
 import sys
-
+from models import Venue, Artist, Show
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -25,108 +25,6 @@ moment = Moment(app)
 app.config.from_object('config')
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-
-#----------------------------------------------------------------------------#
-# Models.
-#----------------------------------------------------------------------------#
-
-class Venue(db.Model):
-    __tablename__ = 'venues'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    city = db.Column(db.String(120))
-    state = db.Column(db.String(120))
-    address = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
-    image_link = db.Column(db.String(500))
-    facebook_link = db.Column(db.String(120))
-    genres = db.Column(db.String(120), nullable=False)
-    website = db.Column(db.String(120))
-    seeking_talent = db.Column(db.Boolean, nullable=False, default=False)
-    seeking_description = db.Column(db.String(500))
-    show = db.relationship("Show", backref="venue_shows", cascade="all, delete", lazy='dynamic')
-
-    def __repr__(self):
-      return f'<Venue id: {self.id}, name: {self.name}>'
-
-    def json(self):
-      upcoming_shows = self.show.filter(Show.start_time > datetime.now()).all()
-      past_shows = self.show.filter(Show.start_time < datetime.now()).all()
-
-      return {
-        'id': self.id,
-        'name': self.name,
-        'city': self.city,
-        'state': self.state,
-        'address': self.address,
-        'phone': self.phone,
-        'genres':  json.loads(self.genres),
-        'image_link': self.image_link,
-        'facebook_link': self.facebook_link,
-        'website': self.website,
-        'seeking_talent': self.seeking_talent,
-        'seeking_description': self.seeking_description,
-        'upcoming_shows_count': len(upcoming_shows),
-        'upcoming_shows': upcoming_shows,
-        'past_shows_count': len(past_shows),
-        'past_shows': past_shows,
-      }
-
-class Artist(db.Model):
-    __tablename__ = 'artists'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    city = db.Column(db.String(120))
-    state = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
-    genres = db.Column(db.String(120))
-    image_link = db.Column(db.String(500))
-    facebook_link = db.Column(db.String(120))
-    website = db.Column(db.String(120))
-    seeking_venue = db.Column(db.Boolean, nullable=False, default=False)
-    seeking_description = db.Column(db.String(500))
-    show = db.relationship("Show", backref="artist_shows", cascade="all, delete", lazy='dynamic')
-
-    def __repr__(self):
-      return f'<Artist id: {self.id}, name: {self.name}>'
-
-    def json(self):
-      upcoming_shows = self.show.filter(Show.start_time > datetime.now()).all()
-      past_shows = self.show.filter(Show.start_time < datetime.now()).all()
-
-      return {
-        'id': self.id,
-        'name': self.name,
-        'city': self.city,
-        'state': self.state,
-        'phone': self.phone,
-        'genres': json.loads(self.genres),
-        'image_link': self.image_link,
-        'facebook_link': self.facebook_link,
-        'website': self.website,
-        'seeking_venue': self.seeking_venue,
-        'seeking_description': self.seeking_description,
-        'upcoming_shows_count': len(upcoming_shows),
-        'upcoming_shows': upcoming_shows,
-        'past_shows_count': len(past_shows),
-        'past_shows': past_shows,
-      }
-
-class Show(db.Model):
-  __tablename__ = 'shows'
-
-  id = db.Column(db.Integer, primary_key=True)
-  artist_id = db.Column(db.Integer, db.ForeignKey('artists.id', ondelete="CASCADE"), nullable=False)
-  venue_id = db.Column(db.Integer, db.ForeignKey('venues.id', ondelete="CASCADE"), nullable=False)
-  start_time = db.Column(db.DateTime, nullable=False)
-  artist = db.relationship("Artist", backref="show_artists", lazy=True)
-  venue = db.relationship("Venue", backref="show_venues", lazy=True)
-
-  def __repr__(self):
-    return f'<Show id: {self.id}, artist_id: {self.artist_id}, venue_id: {self.venue_id} start_time: {self.start_time}>'
-
 
 #----------------------------------------------------------------------------#
 # Filters.
@@ -206,28 +104,47 @@ def create_venue_form():
 def create_venue_submission():
   error = None
 
+  # try:
+  #   data = request.get_json()
+  #   data['seeking_talent'] = True if data['seeking_talent'] == 'True' else False
+  #   venue = Venue(**data)
+  #   db.session.add(venue)
+  #   db.session.commit()
+  #   venue_id = venue.id
+    
+  # except:
+  #   db.session.rollback()
+  #   error = 'Invalid data'
+  #   print(sys.exc_info())
+
   try:
-    data = request.get_json()
-    data['seeking_talent'] = True if data['seeking_talent'] == 'True' else False
-    venue = Venue(**data)
+    form = VenueForm(request.form)
+    venue = Venue(
+        name=form.name.data,
+        city=form.city.data,
+        state=form.state.data,
+        address=form.address.data,
+        phone=form.phone.data,
+        genres=form.genres.data,
+        facebook_link=form.facebook_link.data,
+        image_link=form.image_link.data
+    )
     db.session.add(venue)
     db.session.commit()
-    venue_id = venue.id
-    
-  except:
+    flash('Venue: {0} created successfully'.format(venue.name))
+  except Exception as err:
+    flash('An error occurred creating the Venue: {0}. Error: {1}'.format(venue.name, err))
     db.session.rollback()
-    error = 'Invalid data'
-    print(sys.exc_info())
 
   finally:
     db.session.close()
 
-  if error:
-    flash('An error occurred. Venue ' + data['name'] + ' could not be listed.')
-    abort(500)
-  else:
-    flash('Venue ' + data['name'] + ' was successfully listed!')
-    return redirect(url_for('show_venue', venue_id = venue_id))
+  # if error:
+  #   flash('An error occurred. Venue ' + data['name'] + ' could not be listed.')
+  #   abort(500)
+  # else:
+  #   flash('Venue ' + data['name'] + ' was successfully listed!')
+  #   return redirect(url_for('show_venue', venue_id = venue_id))
 
 @app.route('/venues/<venue_id>', methods=['POST'])
 def delete_venue(venue_id):
